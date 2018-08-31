@@ -105,7 +105,7 @@ architecture="armhf"
 if [ -z "$2" ]||[ "$2" == "rc" ]||[ "$2" == "p" ]; then
     LANG=C apt list --installed | sed 's/\/.*//g'>/tmp/aptlist
     need_install=""
-    for i in git-core gnupg flex bison gperf build-essential zip curl libncurses5-dev zlib1g-dev gcc g++ parted kpartx debootstrap pixz qemu-user-static abootimg cgpt vboot-kernel-utils vboot-utils u-boot-tools bc lzma lzop automake autoconf m4 dosfstools rsync schedtool git dosfstools e2fsprogs device-tree-compiler libssl-dev qemu-user-static btrfs-tools binutils binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf linux-source; do
+    for i in git-core gnupg flex bison gperf build-essential zip curl libncurses5-dev zlib1g-dev gcc g++ parted kpartx debootstrap pixz qemu-user-static abootimg cgpt vboot-kernel-utils vboot-utils u-boot-tools bc lzma lzop automake autoconf m4 dosfstools rsync schedtool git dosfstools e2fsprogs device-tree-compiler libssl-dev qemu-user-static btrfs-progs binutils binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf linux-source; do
         if ! $(grep $i /tmp/aptlist -q); then 
             need_install+="$i "
         fi
