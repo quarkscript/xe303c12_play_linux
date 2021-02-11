@@ -7,16 +7,20 @@ if [ "$1" == "-h" ] ; then echo '
 # Based on Kali-ARM-Build-Scripts                                      #
 # https://github.com/offensive-security/kali-arm-build-scripts         #
 #                                                                      #
-# Tested only on Kali linux x86 light. Probably may work on Debian-    #
-# based distros. Use:                                                  #
+# Tested only on Kali linux x86_64 minimal. Probably                   #
+# may work on Debian- based distros.                                   #
+# Use:                                                                 #
 # ./nakali "version number" ["", fsd, p, fsp, rc, fsrc] \              #
 #   "custom root partition size" "non default cross compiler path" \   #
-#   "non default cross compiler prefix" "peach kernel release"         #
+#   "non default cross compiler prefix" "peach kernel release" \       #
+#   "kernel rcn-patch"                                                 #
 # All params except "version number" are optional.                     #
 #                                                                      #
 # To rebuild disk image and kernel but not whole arm system just run   #
 # this script next time with second parameter "fsd" (fsrc, fsp)        #
 # config can be adjusted as needed, it does not affect previous stages #
+#                                                                      #
+# Kernel rcn-patch could be a name of patch file                       #
 #                                                                      #
 # Req. dep. will be installed automatically, except old ccc for peach  #
 # root privileges are required. To skip some params you may use ""     #
@@ -39,13 +43,13 @@ if [ ! -z "$2" ]&&[ "$2" != "rc" ]&&[ "$2" != "fsrc" ]&&[ "$2" != "fsd" ]&&[ "$2
     exit 1
 fi
 if [ ! -z "$3" ]; then
-    if [ "$3" -gt "4" ]&&[ "$3" -lt "16" ];then
+    if [ "$3" -gt "4" ]&&[ "$3" -lt "129" ];then
 		dis=$(($3*1024+20))
-	elif [ "$3" -gt "5119" ]&&[ "$3" -lt "16364" ]; then
+	elif [ "$3" -gt "5119" ]&&[ "$3" -lt "131093" ]; then
 		dis=$(($3+20))
 	else
 		echo "$3 out of range"
-		echo "Custom root partition size is allowed at 5-15 (G) or 5120-16363 (M)"
+		echo "Custom root partition size is allowed at 5-128 (G) or 5120-131092 (M)"
 		echo "or empty '' means default size (7 G). Root partition offset is 20Mb"
 		echo "to set a root partition size use only numbers from that intervals"
 		exit 1
@@ -98,7 +102,7 @@ if $(echo $2 | grep p -q)&&[ -z "$6" ]; then
 	echo 'https://chromium.googlesource.com/chromiumos/third_party/kernel/+refs'
 fi
 
-basedir=`pwd`/kali-exynos-$1
+basedir="$(pwd)/kali-exynos-$1"
 mirror=http.kali.org
 architecture="armhf"
 
@@ -113,8 +117,7 @@ if [ -z "$2" ]||[ "$2" == "rc" ]||[ "$2" == "p" ]; then
     rm -f /tmp/aptlist
     if [ "$need_install" != "" ]; then
         apt-get install -y $need_install
-        MACHINE_TYPE=`uname -m`
-        if [ "${MACHINE_TYPE}" == 'x86_64' ]; then
+        if [ "$(uname -m)" == 'x86_64' ]; then
             dpkg --add-architecture i386
             apt-get update
             apt-get install -y libstdc++6:i386 libgcc1:i386 zlib1g:i386 libncurses5:i386
@@ -310,10 +313,19 @@ else
 	cd ${basedir}/root/usr/src/kernel
 	cp ${basedir}/../config .config
 fi
+
+# apply extrapatch
+if [ ! -z "$7" ]&&[ -f "${basedir}/../$7" ]; then
+    cp "${basedir}/../$7" ../xtrpatch.patch
+    git apply ../xtrpatch.patch
+fi
+
 # make menuconfig
 make -j$(($(grep -c processor /proc/cpuinfo)+1)) zImage modules dtbs
 make modules_install INSTALL_MOD_PATH=${basedir}/root
 make headers_install INSTALL_HDR_PATH=${basedir}/root
+
+#cp -f arch/arm/boot/zImage ${basedir}/root/boot/zImage
 cp .config ${basedir}/../config_w
 cd ${basedir}/root/usr/src/kernel/arch/arm/boot
 if $(echo $2 | grep p -q); then
@@ -421,7 +433,7 @@ cat << __EOF__ > ${basedir}/root/usr/src/kernel/arch/arm/boot/kernel-exynos.its
 };
 
 __EOF__
-echo 'noinitrd console=tty1 quiet root=PARTUUID=%U/PARTNROFF=1 rootwait rw lsm.module_locking=0 net.ifnames=0 rootfstype=ext4 zswap.compressor=lzo zswap.max_pool_percent=20 elevator=bfq' > cmdline
+echo 'noinitrd console=tty1 quiet root=PARTUUID=%U/PARTNROFF=1 rootwait rw lsm.module_locking=0 net.ifnames=0 rootfstype=ext4 zswap.compressor=zstd zswap.max_pool_percent=40 audit=0' > cmdline
 fi
 mkimage -D "-I dts -O dtb -p 2048" -f kernel-exynos.its exynos-kernel
 # Pulled from ChromeOS, this is exactly what they do because there's no
