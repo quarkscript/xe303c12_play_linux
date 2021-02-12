@@ -1,5 +1,5 @@
 #!/bin/bash
-if [ "$1" == "-h" ] ; then echo '
+if [ "$1" == "-h" ]||[ "$1" == "--help" ]||[ "$1" == "help" ] ; then echo '
 ########################################################################
 # Script to gen armhf-kali-linux image for chromebook samsung xe303c12 #
 # https://github.com/quarkscript/xe303c12_play_linux/                  #
@@ -8,11 +8,11 @@ if [ "$1" == "-h" ] ; then echo '
 # https://github.com/offensive-security/kali-arm-build-scripts         #
 #                                                                      #
 # Tested only on Kali linux x86_64 minimal. Probably                   #
-# may work on Debian based distros (for rc-kernels).                   #
+# may work on Debian based distros (for rc-kernels).                                   #
 # Use:                                                                 #
 # ./nakali ["", fsd, rc, fsrc] ["custom root partition size"] \        #
 #          ["kernel rcn-patch"] ["" "btrfs" "f2fs"]                    #
-# All params except are optional.                                      #
+# All params are optional.                                             #
 #                                                                      #
 # To rebuild disk image and kernel but not whole arm system just run   #
 # this script next time with first parameter "fsd" (fsrc)              #
@@ -274,10 +274,10 @@ bootp=${device}p1
 rootp=${device}p2
 
 mkdir -p ${basedir}/root
-if [ "$4" != "btrfs" ]; then
+if [ "$4" == "btrfs" ]; then
     mkfs.btrfs -f --label rootfs $rootp
     mount $rootp ${basedir}/root -o,compress,space_cache
-elif [ "$4" != "f2fs" ]; then
+elif [ "$4" == "f2fs" ]; then
     mkfs.f2fs -f -O 'extra_attr flexible_inline_xattr compression encrypt ' -l rootfs $rootp
     mount $rootp ${basedir}/root -o,compress
 else
@@ -285,14 +285,14 @@ else
     mount $rootp ${basedir}/root
 fi
 
-rootuuid=$(LANG=C blkid | grep 'LABEL="rootfs"' | sed 's/" T.*//g' | sed 's/.*="//g')
+rootuuid=$(LANG=C blkid | grep 'LABEL="rootfs"' | sed 's/.*UUID="//g' | sed 's/".*//g')
 echo "Rsyncing rootfs into image file"
 rsync -HPavz -q ${basedir}/kali-$architecture/ ${basedir}/root/
 cat << EOF > ${basedir}/root/etc/apt/sources.list
 deb http://http.kali.org/kali kali-rolling main contrib non-free
 deb-src http://http.kali.org/kali kali-rolling main contrib non-free
 EOF
-if [ "$4" != "btrfs" ]; then
+if [ "$4" == "btrfs" ]; then
 cat << EOF> ${basedir}/root/etc/fstab
 # /etc/fstab: static file system information.
 #
@@ -307,7 +307,7 @@ UUID=$rootuuid /               btrfs    noatime,compress,space_cache,autodefrag,
 #UUID= none            swap    sw              0       0
 #/dev/sr0        /media/cdrom0   udf,iso9660 user,noauto     0       0
 EOF
-elif [ "$4" != "f2fs" ]; then
+elif [ "$4" == "f2fs" ]; then
 cat << EOF> ${basedir}/root/etc/fstab
 # /etc/fstab: static file system information.
 #
@@ -368,7 +368,7 @@ fi
 
 make -j$(($(grep -c processor /proc/cpuinfo)+1)) zImage modules dtbs
 make modules_install INSTALL_MOD_PATH=${basedir}/root
-make headers_install INSTALL_HDR_PATH=${basedir}/root
+make headers_install INSTALL_HDR_PATH=${basedir}/root/usr
 
 cp -f arch/arm/boot/zImage ${basedir}/root/boot/zImage 
 cp .config ${basedir}/../config_w
@@ -492,7 +492,7 @@ kpartx -dv $loopdevice
 losetup -d $loopdevice
 echo '
 if all complete without errors you can write result image with dd, for example:
-dd if=kali-exynos-"version number"/kali-"version number"-exynos.img \
+dd if=kali-exynos/kali-exynos.img \
 of=/dev/"flash stick" bs=8M status=progress
 
 Be aware! Wrong /dev/"flash stick" can permanently destroy data on hard drives!
