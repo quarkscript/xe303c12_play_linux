@@ -8,7 +8,7 @@ if [ "$1" == "-h" ]||[ "$1" == "--help" ]||[ "$1" == "help" ] ; then echo '
 # https://github.com/offensive-security/kali-arm-build-scripts         #
 #                                                                      #
 # Tested only on Kali linux x86_64 minimal. Probably                   #
-# may work on Debian based distros (for rc-kernels).                                   #
+# may work on Debian based distros (for rc-kernels).                   #
 # Use:                                                                 #
 # ./nakali ["", fsd, rc, fsrc] ["custom root partition size"] \        #
 #          ["kernel rcn-patch"] ["" "btrfs" "f2fs"]                    #
@@ -431,6 +431,7 @@ mkimage -D "-I dts -O dtb -p 2048" -f kernel-exynos.its exynos-kernel
 # bootloader in the kernel partition on ARM.
 dd if=/dev/zero of=bootloader.bin bs=512 count=1
 vbutil_kernel --arch arm --pack ${basedir}/kernel.bin --keyblock /usr/share/vboot/devkeys/kernel.keyblock --signprivate /usr/share/vboot/devkeys/kernel_data_key.vbprivk --version 1 --config cmdline --bootloader bootloader.bin --vmlinuz exynos-kernel
+cp ${basedir}/kernel.bin ${basedir}/root/boot/vmlinux.kpart
 cd ${basedir}/root/usr/src/kernel/
 make mrproper
 cp ${basedir}/../config_w .config
