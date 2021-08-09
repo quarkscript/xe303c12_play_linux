@@ -3,10 +3,7 @@
 nakali - semi-automatic script lets build kali-linux-armhf image for xe303c12 chromebook only. Based on https://github.com/offensive-security/kali-arm-build-scripts  + some mods. 
 Actually it was made for self learning purpose.
 
-> Febrary 14 2021 - not fully tested update. 
-The build with the old Chrome OS kernel is excluded from the script. Modern kernel build is left.
-
->[bulded test image with kernel 5.13.8](https://drive.google.com/u/0/uc?id=1KD3avnTKUiXjZflGU7Wx8EheiAlu5ZRY&export=download) 
+>bulded test [image](https://drive.google.com/u/0/uc?id=1KD3avnTKUiXjZflGU7Wx8EheiAlu5ZRY&export=download) with kernel 5.13.8
 
 >[small demo](https://youtu.be/GCAjI37bUYo)
 
