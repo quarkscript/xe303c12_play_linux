@@ -10,15 +10,16 @@ if [ "$1" == "-h" ]||[ "$1" == "--help" ]||[ "$1" == "help" ] ; then echo '
 # Tested only on Kali linux x86_64 minimal. Probably                   #
 # may work on Debian based distros (for rc-kernels).                   #
 # Use:                                                                 #
-# ./nakali ["", fsd, rc, fsrc] ["custom root partition size"] \        #
+# ./nakali ["", fsd, fsl, l, rc, fsrc] \                               #
+#          ["custom root partition size"] \                            #
 #          ["kernel rcn-patch"] ["" "btrfs" "f2fs"]                    #
 # All params are optional.                                             #
 #                                                                      #
 # To rebuild disk image and kernel but not whole arm system just run   #
-# this script next time with first parameter "fsd" (fsrc)              #
+# this script next time with first parameter "fsd" (fsl or fsrc)       #
 # config can be adjusted as needed, it does not affect previous stages #
-#                                                                      #
-# Kernel rcn-patch could be a name of patch file                       #
+# rc - release candidate kernel, l -local, d -default (src from kali); #
+# kernel rcn patch = a name of patch file                              #
 #                                                                      #
 # Req. dep. will be installed automatically,                           #
 # root privileges are required. To skip some params you may use ""     #
@@ -27,16 +28,18 @@ if [ "$1" == "-h" ]||[ "$1" == "--help" ]||[ "$1" == "help" ] ; then echo '
 fi
 
 ## checks
-if [ ! -z "$1" ]&&[ "$1" != "rc" ]&&[ "$1" != "fsrc" ]&&[ "$1" != "fsd" ]; then
-    echo "First param can be one of those: 'rc', 'fsrc', '', 'fsd'"
-    echo "'' (by default) build system, image and kernel (from Kali source)"
+if [ ! -z "$1" ]&&[ "$1" != "rc" ]&&[ "$1" != "fsrc" ]&&[ "$1" != "fsd" ]&&[ "$1" != "l" ]&&[ "$1" != "fsl" ]; then
+    echo "First param can be one of those: 'rc', 'fsrc', '', 'fsd', 'l', 'fsl'"
+    echo "'' - build whole system, image and kernel ( kernel source from Kali repo)"
     echo "fsd - build only kernel and image (final stage)"
-    echo "rc - build system with release candidate kernel source (Linus Torvalds git)"
+    echo "rc - build whole system with release candidate kernel source (Linus Torvalds git)"
     echo "fsrc - final stage for rc kernel"
+    echo "l - build whole system and kernel from local kernel source archive"
+    echo "fsl - final stage for local placed kernel source archive"
     exit 1
 fi
 if [ ! -z "$2" ]; then
-    if [ "$2" -gt "4" ]&&[ "$2" -lt "129" ];then
+    if [ "$2" -gt "1" ]&&[ "$2" -lt "129" ];then
 		dis=$(($2*1024+0))
 	elif [ "$2" -gt "5119" ]&&[ "$2" -lt "131093" ]; then
 		dis=$(($2+0))
@@ -53,7 +56,7 @@ else
 fi
 
 if [ ! -e "config" ];then
-	wget https://raw.githubusercontent.com/quarkscript/linux-armv7-xe303c12-only/master/archlinuxarm/linux_xe303c12/config
+	wget https://raw.githubusercontent.com/quarkscript/xe303c12_play_linux/master/config
 fi
 if [ ! -e "config" ];then
 	echo "config - kennel config not found, it must be in the same dir as this script"
@@ -68,10 +71,10 @@ basedir="$(pwd)/kali-exynos"
 mirror=http.kali.org
 architecture="armhf"
 
-if [ -z "$1" ]||[ "$1" == "rc" ]; then
+if [ -z "$1" ]||[ "$1" == "rc" ]||[ "$1" == "l" ]; then
     LANG=C apt list --installed | sed 's/\/.*//g'>/tmp/aptlist
     need_install=""
-    for i in git-core gnupg flex bison gperf build-essential zip curl libncurses5-dev zlib1g-dev gcc g++ parted kpartx debootstrap pixz qemu-user-static abootimg cgpt vboot-kernel-utils vboot-utils u-boot-tools bc lzma lzop automake autoconf m4 dosfstools rsync schedtool git dosfstools e2fsprogs device-tree-compiler libssl-dev qemu-user-static btrfs-progs f2fs-tools binutils binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf linux-source; do
+    for i in git-core gnupg flex bison gperf build-essential zip curl libncurses5-dev zlib1g-dev gcc g++ parted kpartx debootstrap pixz qemu-user-static abootimg cgpt vboot-kernel-utils vboot-utils u-boot-tools bc lzma lzop automake autoconf m4 dosfstools rsync schedtool git dosfstools e2fsprogs device-tree-compiler libssl-dev qemu-user-static btrfs-progs f2fs-tools binutils binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf; do
         if ! $(grep $i /tmp/aptlist -q); then 
             need_install+="$i "
         fi
@@ -88,7 +91,8 @@ if [ -z "$1" ]||[ "$1" == "rc" ]; then
         fi
         apt autoremove -y
     fi
-    packages="ntpdate apt-transport-https apt-utils bash-completion console-setup dialog e2fsprogs firmware-samsung ifupdown initramfs-tools inxi iw man-db mlocate netcat-traditional net-tools parted psmisc rfkill screen tmux unrar usbutils vim wget whiptail zerofree kali-desktop-xfce kali-root-login xserver-xorg-video-fbdev xserver-xorg-input-libinput xserver-xorg-input-synaptics xfonts-terminus xinput alsa-utils bc bison crda bluez bluez-firmware libnss-systemd libssl-dev triggerhappy btrfs-progs f2fs-tools aptitude mc"
+    packages="ntpdate curl apt-transport-https apt-utils bash-completion console-setup dialog e2fsprogs ifupdown initramfs-tools iw man-db net-tools wget libnss-systemd libssl-dev btrfs-progs f2fs-tools aptitude mc rfkill usbutils whiptail base0files login tmux wpasupplicant mlocate netcat-traditional parted psmisc screen tmux unrar wget zerofree kali-desktop-xfce kali-root-login xserver-xorg-video-fbdev xserver-xorg-input-libinput xserver-xorg-input-synaptics xfonts-terminus xinput alsa-utils bc bison crda bluez  triggerhappy"
+    
     # Set this to use an http proxy, like apt-cacher-ng, and uncomment further down
     # to unset it.
     #export http_proxy="http://localhost:3142/"
@@ -231,6 +235,43 @@ rm -f /usr/sbin/invoke-rc.d
 dpkg-divert --remove --rename /usr/sbin/invoke-rc.d
 
 rm -f /third-stage
+
+
+# download firmwares
+if [ ! -d /usr/lib/firmware ]; then
+    mkdir -p /usr/lib/firmware
+fi
+# samsung
+if [ ! -f /usr/lib/firmware/s5p-mfc.fw ]; then
+    curl -o /usr/lib/firmware/s5p-mfc.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc.fw
+fi
+if [ ! -f /usr/lib/firmware/s5p-mfc-v6-v2.fw ]; then
+    curl -o /usr/lib/firmware/s5p-mfc-v6-v2.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v6-v2.fw
+fi
+if [ ! -f /usr/lib/firmware/s5p-mfc-v6.fw ]; then
+    curl -o /usr/lib/firmware/s5p-mfc-v6.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v6.fw
+fi
+if [ ! -f /usr/lib/firmware/s5p-mfc-v7.fw ]; then
+    curl -o /usr/lib/firmware/s5p-mfc-v7.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v7.fw
+fi
+if [ ! -f /usr/lib/firmware/s5p-mfc-v8.fw ]; then
+    curl -o /usr/lib/firmware/s5p-mfc-v8.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v8.fw
+fi
+if [ ! -d /usr/lib/firmware/mrvl ]; then
+    mkdir -p /usr/lib/firmware/mrvl
+fi
+# marvel
+if [ ! -f /usr/lib/firmware/mrvl/sd8787_uapsta.bin ]; then
+    curl -o /usr/lib/firmware/mrvl/sd8787_uapsta.bin https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/mrvl/sd8787_uapsta.bin
+fi
+if [ ! -f /usr/lib/firmware/mrvl/sd8797_uapsta.bin ]; then
+    curl -o /usr/lib/firmware/mrvl/sd8797_uapsta.bin https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/mrvl/sd8797_uapsta.bin
+fi
+if [ ! -f /usr/lib/firmware/mrvl/sd8897_uapsta.bin ]; then
+    curl -o /usr/lib/firmware/mrvl/sd8897_uapsta.bin https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/mrvl/sd8897_uapsta.bin
+fi
+sleep 5
+
 EOF
     chmod +x kali-$architecture/third-stage
     LANG=C chroot kali-$architecture /third-stage
@@ -344,23 +385,36 @@ export ARCH=arm
 if $(echo $1 | grep rc -q); then
 	git clone https://github.com/torvalds/linux ${basedir}/linux
 	rm -rf ${basedir}/linux/.git
-	cp -r ${basedir}/linux ${basedir}/root/usr/src/kernel
-	rm -rf ${basedir}/linux
+	mv -f ${basedir}/linux ${basedir}/root/usr/src/kernel
+	#rm -rf ${basedir}/linux
 	cd ${basedir}/root/usr/src/kernel
 	cp ${basedir}/../config .config
-else
-	tar xf /usr/src/linux*tar.xz -C ${basedir}/root/usr/src/
-	cp -r ${basedir}/root/usr/src/linux* ${basedir}/root/usr/src/kernel
-	rm -rf ${basedir}/root/usr/src/linux*
+elif $(echo $1 | grep l -q); then
+    tar -xf ${basedir}/../linux*tar.xz -C ${basedir}/root/usr/src/
+	mv -f ${basedir}/root/usr/src/linux* ${basedir}/root/usr/src/kernel
+	#rm -rf ${basedir}/root/usr/src/linux*
 	cd ${basedir}/root/usr/src/kernel
+	cp ${basedir}/../config .config
+	curl -o ${basedir}/root/usr/src/kernel/9_kali_inject.patch https://gitlab.com/kalilinux/build-scripts/kali-arm/-/raw/master/patches/kali-wifi-injection-5.9.patch
+else
+	tar -xf /usr/src/linux*tar.xz -C ${basedir}/root/usr/src/
+	mv -f ${basedir}/root/usr/src/linux* ${basedir}/root/usr/src/kernel
+	#rm -rf ${basedir}/root/usr/src/linux*
+	cd ${basedir}/root/usr/src/kernel
+	if [ -f /usr/src/patch*xz ]; then
+        xz -d /usr/src/linux*patch*xz
+        mv -f *.patch 0_kernel.patch
+	fi
 	cp ${basedir}/../config .config
 fi
 
-# apply extrapatch
-if [ ! -z "$3" ]&&[ -f "${basedir}/../$7" ]; then
-    cp "${basedir}/../$7" ../xtrpatch.patch
-    git apply ../xtrpatch.patch
+# apply patches
+if [ ! -z "$3" ]&&[ -f "${basedir}/../$3" ]; then
+    cp "${basedir}/../$3" 8_rcnee.patch
 fi
+for ptch in *patch; do
+    git apply $ptch
+done
 
 if $(echo $1 | grep rc -q); then
     make menuconfig
@@ -380,6 +434,9 @@ make -j$(($(grep -c processor /proc/cpuinfo)+1)) zImage modules dtbs
 make modules_install INSTALL_MOD_PATH=${basedir}/root
 make headers_install INSTALL_HDR_PATH=${basedir}/root/usr
 
+mkdir ${basedir}/root/boot/dtbs/
+cp -f arch/arm/boot/dts/exynos5250-snow.dtb ${basedir}/root/boot/dtbs/exynos5250-snow.dtb
+cp -f arch/arm/boot/dts/exynos5250-snow-rev5.dtb ${basedir}/root/boot/dtbs/exynos5250-snow-rev5.dtb
 cp -f arch/arm/boot/zImage ${basedir}/root/boot/zImage 
 cp -f arch/arm/boot/zImage ${basedir}/zImage 
 cp .config ${basedir}/../config_w
@@ -435,7 +492,8 @@ cat << __EOF__ > ${basedir}/root/usr/src/kernel/arch/arm/boot/kernel-exynos.its
 };
 
 __EOF__
-echo 'noinitrd console=tty1 quiet root=PARTUUID=%U/PARTNROFF=1 rootwait rw lsm.module_locking=0 net.ifnames=0 zswap.compressor=zstd zswap.max_pool_percent=40 audit=0' > cmdline
+
+echo 'console=tty0 root=PARTUUID=%U/PARTNROFF=1 zswap.compressor=zstd zswap.max_pool_percent=40' > cmdline
 
 mkimage -D "-I dts -O dtb -p 2048" -f kernel-exynos.its exynos-kernel
 # Pulled from ChromeOS, this is exactly what they do because there's no
