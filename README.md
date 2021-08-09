@@ -6,20 +6,24 @@ Actually it was made for self learning purpose.
 > Febrary 14 2021 - not fully tested update. 
 The build with the old Chrome OS kernel is excluded from the script. Modern kernel build is left.
 
->[bulded test image](https://drive.google.com/file/d/1b84oaxpgJnaJiFZXSBMPJ0aWFD59Vqy1/view?usp=sharing) 
+>[bulded test image with kernel 5.13.8](https://drive.google.com/u/0/uc?id=1KD3avnTKUiXjZflGU7Wx8EheiAlu5ZRY&export=download) 
 
 >[small demo](https://youtu.be/GCAjI37bUYo)
 
 My suggestion how to use  the script from installed x86_64 (x86) Kali Linux with Linux Kernel source 5.10.2-5.10.x
-```
+```#!/bin/bash
+
 # enable network
 sudo dhclient eth0
 
+# download kernel source
+wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.13.8.tar.xz
+
 # download rcn-ee patch
-wget http://rcn-ee.com/deb/stretch-armhf/v5.10.2-armv7-x9/patch-5.10.2-armv7-x9.diff.xz
+wget https://rcn-ee.com/deb/stretch-armhf/v5.13.2-armv7-x11/patch-5.13.2-armv7-x11.diff.xz
 
 # download config
-wget https://raw.githubusercontent.com/quarkscript/linux-armv7-xe303c12-only/master/archlinuxarm/linux_xe303c12/config
+wget https://raw.githubusercontent.com/quarkscript/xe303c12_play_linux/master/config
 
 # download script
 wget https://raw.githubusercontent.com/quarkscript/xe303c12_play_linux/master/nakali
@@ -28,11 +32,12 @@ wget https://raw.githubusercontent.com/quarkscript/xe303c12_play_linux/master/na
 chmod +x nakali
 
 # extract patch
-xz -d patch-5.10.2-armv7-x9.diff.xz
+xz -d patch-5.13.2-armv7-x11.diff.xz
 
 # build system, disk image and kernel; write build log
-sudo ./nakali '' '' 'patch-5.10.2-armv7-x9.diff' '' |& tee -a build.log
+sudo ./nakali 'l' '' 'patch-5.13.2-armv7-x11.diff' 'btrfs' |& tee -a build.log
 
 # rebuild disk image and recompile a kernel without redownloading armv7hf packages
-#sudo ./nakali 'fsd' '' 'patch-5.10.2-armv7-x9.diff' '' |& tee -a build.log
+#sudo ./nakali 'fsl' '' 'patch-5.13.2-armv7-x11.diff' 'btrfs' |& tee -a build.log
+
 ```
