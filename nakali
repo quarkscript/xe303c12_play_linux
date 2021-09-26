@@ -59,7 +59,7 @@ if [ ! -e "config" ];then
 	wget https://raw.githubusercontent.com/quarkscript/xe303c12_play_linux/master/config
 fi
 if [ ! -e "config" ];then
-	echo "config - kennel config not found, it must be in the same dir as this script"
+	echo "config - kernel config not found, it must be in the same dir as this script"
 	exit 1
 fi
 if [ ! -z "$4" ]&&[ "$4" != "btrfs" ]&&[ "$4" != "f2fs" ]; then
@@ -75,7 +75,7 @@ if [ -z "$1" ]||[ "$1" == "rc" ]||[ "$1" == "l" ]; then
     LANG=C apt list --installed | sed 's/\/.*//g'>/tmp/aptlist
     need_install=""
     for i in git-core gnupg flex bison gperf build-essential zip curl libncurses5-dev zlib1g-dev gcc g++ parted kpartx debootstrap pixz qemu-user-static abootimg cgpt vboot-kernel-utils vboot-utils u-boot-tools bc lzma lzop automake autoconf m4 dosfstools rsync schedtool git dosfstools e2fsprogs device-tree-compiler libssl-dev qemu-user-static btrfs-progs f2fs-tools binutils binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf; do
-        if ! $(grep $i /tmp/aptlist -q); then 
+        if ! $(grep $i /tmp/aptlist -xq); then
             need_install+="$i "
         fi
     done
@@ -91,7 +91,7 @@ if [ -z "$1" ]||[ "$1" == "rc" ]||[ "$1" == "l" ]; then
         fi
         apt autoremove -y
     fi
-    packages="ntpdate curl apt-transport-https apt-utils bash-completion console-setup dialog e2fsprogs ifupdown initramfs-tools iw man-db net-tools wget libnss-systemd libssl-dev btrfs-progs f2fs-tools aptitude mc rfkill usbutils whiptail base0files login tmux wpasupplicant mlocate netcat-traditional parted psmisc screen tmux unrar wget zerofree kali-desktop-xfce kali-root-login xserver-xorg-video-fbdev xserver-xorg-input-libinput xserver-xorg-input-synaptics xfonts-terminus xinput alsa-utils bc bison crda bluez  triggerhappy"
+    packages="ntpdate curl apt-transport-https apt-utils bash-completion console-setup dialog e2fsprogs ifupdown initramfs-tools iw man-db net-tools wget libnss-systemd libssl-dev btrfs-progs f2fs-tools aptitude mc rfkill usbutils whiptail base0files login tmux wpasupplicant mlocate netcat-traditional parted psmisc screen tmux unrar wget zerofree kali-desktop-xfce kali-root-login xserver-xorg-video-fbdev xserver-xorg-input-libinput xserver-xorg-input-synaptics xfonts-terminus xinput alsa-utils bc bison crda bluez triggerhappy"
     
     # Set this to use an http proxy, like apt-cacher-ng, and uncomment further down
     # to unset it.
@@ -493,7 +493,7 @@ cat << __EOF__ > ${basedir}/root/usr/src/kernel/arch/arm/boot/kernel-exynos.its
 
 __EOF__
 
-echo 'console=tty0 root=PARTUUID=%U/PARTNROFF=1 zswap.compressor=zstd zswap.max_pool_percent=40' > cmdline
+echo 'console=tty0 root=PARTUUID=%U/PARTNROFF=1 zswap.compressor=zstd zswap.max_pool_percent=40 noinitrd audit=0' > cmdline
 
 mkimage -D "-I dts -O dtb -p 2048" -f kernel-exynos.its exynos-kernel
 # Pulled from ChromeOS, this is exactly what they do because there's no
