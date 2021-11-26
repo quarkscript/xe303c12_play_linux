@@ -1,11 +1,13 @@
 # xe303c12_play_linux
 
-Script that could build debian based armhf disk image for xe303c12 chromebook. Currently implemented support for Kali linux ( was based on https://github.com/offensive-security/kali-arm-build-scripts )
+[Script](https://github.com/quarkscript/xe303c12_play_linux/blob/master/gadebli) that could build debian based armhf disk image for xe303c12 chromebook. Currently implemented support for Kali linux ( was based on https://github.com/offensive-security/kali-arm-build-scripts )
 
 Actually it was made for self educational purpose.
 
 - test disk [image 1](https://drive.google.com/u/0/uc?id=1meNMjZaphdySOPjudi1tr-4pjXMNLCBm&export=download) (kernel 5.13.8 or something, xfce4)
 - test disk [image 2](https://drive.google.com/u/0/uc?id=1tN4aJ3Pe9iP6f9tkd5llpXPbLvAqvjK2&export=download) (kernel 5.15.5, console)
+
+Disk image can be simply resized by [edim](https://github.com/quarkscript/linux-armv7-xe303c12-only/blob/master/edim) script ( [demo](https://youtu.be/ALJR2doOipc) ) without rebuilding system
 
 Since script was rewrited [this demo](https://youtu.be/GCAjI37bUYo) may not completely fit to it, but idea and scheme the same. 
 
