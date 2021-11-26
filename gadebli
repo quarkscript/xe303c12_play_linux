@@ -1,149 +1,469 @@
 #!/bin/bash
 if [ "$1" == "-h" ]||[ "$1" == "--help" ]||[ "$1" == "help" ] ; then echo '
 ########################################################################
-# Script to gen armhf-kali-linux image for chromebook samsung xe303c12 #
-# https://github.com/quarkscript/xe303c12_play_linux/                  #
-#                                                                      #
-# Based on Kali-ARM-Build-Scripts                                      #
-# https://github.com/offensive-security/kali-arm-build-scripts         #
-#                                                                      #
-# Tested only on Kali linux x86_64 minimal. Probably                   #
-# may work on Debian based distros (for rc-kernels).                   #
-# Use:                                                                 #
-# ./nakali ["", fsd, fsl, l, rc, fsrc] \                               #
-#          ["custom root partition size"] \                            #
-#          ["kernel rcn-patch"] ["" "btrfs" "f2fs"]                    #
-# All params are optional.                                             #
-#                                                                      #
-# To rebuild disk image and kernel but not whole arm system just run   #
-# this script next time with first parameter "fsd" (fsl or fsrc)       #
-# config can be adjusted as needed, it does not affect previous stages #
-# rc - release candidate kernel, l -local, d -default (src from kali); #
-# kernel rcn patch = a name of patch file                              #
-#                                                                      #
-# Req. dep. will be installed automatically,                           #
-# root privileges are required. To skip some params you may use ""     #
-########################################################################'
+# Script to gen armhf debian based linux image for xe303c12            #
+# Dev. https://git[hu,la]b.com/quarkscript                License GPL  #
+# Place kernel source file, united patch, config and execute           #
+# sudo '$0' [ck,bts,bdi] [kali] ["size"] ["patch"] [btrfs,f2fs]   #
+# ck - compile kernel stage                                            #
+# bts - build target system stage                                      #
+# bdi - build disk image stage, depends of all previous stages         #
+# [kali] - supported distributions                                     #
+# size - disk image size, 2-128 (G) or 1882-131092 (M); 7G by default  #
+# patch - united kernel patch                                          #
+# btrfs,f2fs - root part filesystem type, otherwise ext4 will be used  #
+# Sequence is not important. All params are optional.                  #
+# This script could work on debian based i686 or x86_64 sytems         #
+# It is better to not mix distro types i.e. gen Kali at x86 Kali..     #
+# Deps will be installed automatically, root privileges are required.  #
+########################################################################
+'
     exit 0
 fi
 
-## checks
-if [ ! -z "$1" ]&&[ "$1" != "rc" ]&&[ "$1" != "fsrc" ]&&[ "$1" != "fsd" ]&&[ "$1" != "l" ]&&[ "$1" != "fsl" ]; then
-    echo "First param can be one of those: 'rc', 'fsrc', '', 'fsd', 'l', 'fsl'"
-    echo "'' - build whole system, image and kernel ( kernel source from Kali repo)"
-    echo "fsd - build only kernel and image (final stage)"
-    echo "rc - build whole system with release candidate kernel source (Linus Torvalds git)"
-    echo "fsrc - final stage for rc kernel"
-    echo "l - build whole system and kernel from local kernel source archive"
-    echo "fsl - final stage for local placed kernel source archive"
-    exit 1
-fi
-if [ ! -z "$2" ]; then
-    if [ "$2" -gt "4" ]&&[ "$2" -lt "129" ];then
-		dis=$(($2*1024+0))
-	elif [ "$2" -gt "5119" ]&&[ "$2" -lt "131093" ]; then
-		dis=$(($2+0))
-	else
-		echo "$2 out of range"
-		echo "Disk image size is allowed at 5-128 (G) or 5120-131092 (M)"
-		echo "or empty '' means default size (8 G). Root partition offset is 20Mb"
-		echo "to set a disk image size use only numbers from that intervals"
-		exit 1
-	fi
-else 
-	dis=$((8*1024))
-	echo "Default disk image size is 8 (G)"
-fi
-
-if [ ! -e "config" ];then
-	wget https://gitlab.com/quarkscript/linarm/-/raw/master/xe303c12/kali-linux/config
-fi
-if [ ! -e "config" ];then
-	echo "config - kernel config not found, it must be in the same dir as this script"
-	exit 1
-fi
-if [ ! -z "$4" ]&&[ "$4" != "btrfs" ]&&[ "$4" != "f2fs" ]; then
-    echo "allowed filesystems for root partition are ''-ext4 'btrfs' 'f2fs'"
-	exit 1
-fi
-
-basedir="$(pwd)/kali-exynos"
+## def vars
+fstype=ext4
+disksize=$((7*1024))
+patch=''
+stages=''
+hostpackages='git-core gnupg flex bison gperf build-essential zip curl libncurses5-dev zlib1g-dev gcc g++ parted kpartx debootstrap pixz qemu-user-static abootimg cgpt vboot-kernel-utils vboot-utils u-boot-tools bc lzma lzop automake autoconf m4 dosfstools rsync schedtool git dosfstools e2fsprogs device-tree-compiler libssl-dev qemu-user-static btrfs-progs f2fs-tools binutils binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf'
+hostpackages_32bit='libstdc++6:i386 libgcc1:i386 zlib1g:i386 libncurses5:i386'
+target_hostname=kali
+basedir="$(pwd)/$target_hostname-exynos"
 mirror=http.kali.org
 architecture="armhf"
+debootstrap_string="debootstrap --foreign --arch $architecture kali-rolling $target_hostname-$architecture http://$mirror/$target_hostname"
+sources_list="deb http://$mirror/$target_hostname kali-rolling main contrib non-free"
+targetpackages_2="git-core binutils ca-certificates initramfs-tools u-boot-tools"
+targetpackages_3="locales console-common less nano git"
+targetpackages='ntpdate curl apt-transport-https apt-utils bash-completion console-setup dialog e2fsprogs ifupdown initramfs-tools iw man-db net-tools wget libnss-systemd libssl-dev btrfs-progs f2fs-tools aptitude mc rfkill usbutils whiptail base0files login wpasupplicant mlocate netcat-traditional parted psmisc unrar wget zerofree alsa-utils bc bison crda bluez'
+depends="cgpt"
+suggests='vboot-kernel-utils,vboot-utils'
+replaces="linux-image-armmp,linux-image-armmp-lpae,linux-headers-armmp,linux-headers-armmp-lpae"
+provides="linux-image-generic,linux-headers-generic"
+sourcelist='deb http://http.kali.org/kali kali-rolling main contrib non-free
+deb-src http://http.kali.org/kali kali-rolling main contrib non-free'
 
-if [ -z "$1" ]||[ "$1" == "rc" ]||[ "$1" == "l" ]; then
-    LANG=C apt list --installed | sed 's/\/.*//g'>/tmp/aptlist
-    need_install=""
-    for i in git-core gnupg flex bison gperf build-essential zip curl libncurses5-dev zlib1g-dev gcc g++ parted kpartx debootstrap pixz qemu-user-static abootimg cgpt vboot-kernel-utils vboot-utils u-boot-tools bc lzma lzop automake autoconf m4 dosfstools rsync schedtool git dosfstools e2fsprogs device-tree-compiler libssl-dev qemu-user-static btrfs-progs f2fs-tools binutils binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf; do
-        if ! $(grep $i /tmp/aptlist -xq); then 
-            need_install+="$i "
-        fi
-    done
-    rm -f /tmp/aptlist
-    if [ "$need_install" != "" ]; then
-        apt-get install -y $need_install
-        if [ "$(uname -m)" == 'x86_64' ]; then
-            dpkg --add-architecture i386
-            apt-get update
-            apt-get install -y libstdc++6:i386 libgcc1:i386 zlib1g:i386 libncurses5:i386
-        else
-            apt-get install -y libncurses5
-        fi
-        apt autoremove -y
-    fi
-    packages="ntpdate curl apt-transport-https apt-utils bash-completion console-setup dialog e2fsprogs ifupdown initramfs-tools iw man-db net-tools wget libnss-systemd libssl-dev btrfs-progs f2fs-tools aptitude mc rfkill usbutils whiptail base0files login wpasupplicant mlocate netcat-traditional parted psmisc unrar wget zerofree alsa-utils bc bison crda bluez"
+## checks
+if [ $(whoami) != root ];then echo ''; echo root rights are required, try to run with sudo; echo ''; exit 1; fi
+
+for ((tmpvar=1;tmpvar<=$#;tmpvar++)); do
     
-    # Set this to use an http proxy, like apt-cacher-ng, and uncomment further down
-    # to unset it.
-    #export http_proxy="http://localhost:3142/"
-    mkdir -p ${basedir}
+    tmpvalue=$(eval 'echo ${'$tmpvar'}')
+    
+    if [ $tmpvalue == ck ]||[ $tmpvalue == bts ]||[ $tmpvalue == bdi ];then
+        stages="$stages $tmpvalue"
+    elif [ $tmpvalue == kali ];then
+        echo '"'Kali defauilts'"' will be used
+    elif [ $tmpvalue == btrfs ]||[ $tmpvalue == f2fs ];then
+        fstype=$tmpvalue
+    elif $(echo $tmpvalue | grep -q [0-9])&&$(echo $tmpvalue | grep -vq [a-zA-Z,.]);then
+        if [ "$tmpvalue" -gt "2" ]&&[ "$tmpvalue" -lt "129" ];then
+            disksize=$(($tmpvalue*1024+0))
+        elif [ "$tmpvalue" -ge "1882" ]&&[ "$tmpvalue" -lt "131093" ]; then
+            disksize=$(($tmpvalue+0))
+        else
+            echo ''
+            echo "$tmpvalue out of range"
+            echo "Disk image size is allowed at 2-128 (G) or 1882-131092 (M)"
+            echo "or empty '' means default size (7 G). Root partition offset is 20Mb"
+            echo "to set a disk image size use only numbers from that intervals"
+            echo ''
+            exit 1
+        fi
+        if [ $disksize -lt 5119 ]; then echo ''; echo disk size is too small, it could be smaller than your system, be aware; fi
+    elif $(echo $tmpvalue | grep -q --regexp='.patch' --regexp='.diff') ;then
+        patch=$tmpvalue
+    else
+        echo unknown parameter $tmpvalue
+        exit 1
+    fi
+done
+
+if [ -z "$stages" ]; then stages='ck bts bdi'; fi
+if [ -z "$patch" ]; then 
+    echo "
+no patch? are you sure?
+
+# stages:               $stages
+# disk size             $disksize M
+# fstype                $fstype
+# basedir               $basedir
+# mirror                $mirror
+# architecture          $architecture
+# hostpackages          $hostpackages
+# hostpackages (32bit)  $hostpackages_32bit
+# targetpackages        $targetpackages
+# target_hostname       $target_hostname
+# debootstrap_string    $debootstrap_string
+# sources_list          $sources_list
+# targetpackages_2      $targetpackages_2
+# targetpackages_3      $targetpackages_3
+# depends               $depends
+# suggests              $suggests
+# replaces              $replaces
+# provides              $provides
+# sourcelist            $sourcelist
+
+you may press Ctrl+C to abort
+"
+else
+    echo "
+# stages:               $stages
+# disk size             $disksize M
+# fstype                $fstype
+# basedir               $basedir
+# mirror                $mirror
+# architecture          $architecture
+# patch                 $patch
+# hostpackages          $hostpackages
+# hostpackages (32bit)  $hostpackages_32bit
+# targetpackages        $targetpackages
+# target_hostname       $target_hostname
+# debootstrap_string    $debootstrap_string
+# sources_list          $sources_list
+# targetpackages_2      $targetpackages_2
+# targetpackages_3      $targetpackages_3
+# depends               $depends
+# suggests              $suggests
+# replaces              $replaces
+# provides              $provides
+# sourcelist            $sourcelist
+
+you may press Ctrl+C to abort
+"    
+fi
+sleep 30
+echo ' So lets run...'
+
+## check and install required host packages
+
+LANG=C apt list --installed | sed 's/\/.*//g'>/tmp/aptlist
+need_install=""
+for i in $hostpackages; do
+    if ! $(grep $i /tmp/aptlist -xq); then 
+        need_install+="$i "
+    fi
+done
+rm -f /tmp/aptlist
+if [ "$need_install" != "" ]; then
+    apt-get install -y $need_install
+    if [ "$(uname -m)" == 'x86_64' ]; then
+        dpkg --add-architecture i386
+        apt-get update
+        apt-get install -y $(echo $hostpackages_32bit)
+    else
+        apt-get install -y libncurses5
+    fi
+    apt autoremove -y
+fi
+    
+if [ ! -d "$basedir" ]; then mkdir $basedir; fi
+    
+## run stages
+
+if $(echo $stages | grep -q ck); then
+    echo '
+# Compilation stage
+    '
+    if [ ! -e "config" ];then
+        echo Downloading kernel config from github.com/quarkscript/..
+        wget wget https://raw.githubusercontent.com/quarkscript/linux-armv7-xe303c12-only/master/archlinuxarm/linux_xe303c12/config
+    fi
+    if [ ! -e "config" ];then
+        echo Downloading kernel config from gitlab.com/quarkscript/..
+        wget https://gitlab.com/quarkscript/linarm/-/raw/master/xe303c12/kali-linux/config
+    fi
+    if [ ! -e "config" ];then
+        echo "config - kernel config file not found, probably something wrong with internet connection or repos, try pace it manually"
+        exit 1
+    fi
+    
+    if [ -d ${basedir}/kernel ]; then
+	rm -fr ${basedir}/kernel
+	echo remove old kernel build folder
+    fi
+    if [ -f ${basedir}/*.deb ]; then
+        rm -f ${basedir}/*.deb
+	echo remove previous builded kernel package
+    fi
+    if [ -d ${basedir}/kernel_pkg ]; then
+        rm -fr ${basedir}/kernel_pkg
+        echo remove old kernel_pkg folder
+    fi
+    if [ -f ${basedir}/kernel.bin ]; then
+        rm -f ${basedir}/kernel.bin
+        echo remove previous builded kernel.bin
+    fi
+    if [ -f ${basedir}/zImage ]; then
+        rm -fr ${basedir}/zImage
+        echo remove previous builded zImage
+    fi
+    if [ -d ${basedir}/linux* ]; then
+        rm -fr ${basedir}/linux*
+        echo remove previous linux source foldes
+    fi
+    
+    export CROSS_COMPILE=arm-linux-gnueabihf-
+    export ARCH=arm
+    
+    echo extract kernel source
+    tar -xf ${basedir}/../linux*tar.xz -C ${basedir}/
+
+    mv -f ${basedir}/linux* ${basedir}/kernel
+
+    cd ${basedir}/kernel
+    cp ${basedir}/../config .config
+
+    # apply patch
+    if [ ! -z "$patch" ]&&[ -f "${basedir}/../$patch" ]; then
+        cp "${basedir}/../$patch" $patch
+        git apply $patch
+    fi
+
+    #make menuconfig
+
+    echo '
+forcing some optimization flags
+'
+    for tmpcycle in $(find -name Makefile); do
+        sed -i "s/armv7-a/armv7-a+mp+neon-vfpv4  --param l1-cache-size=64 --param l2-cache-size=1024 -faggressive-loop-optimizations -fguess-branch-probability -floop-nest-optimize -fomit-frame-pointer -fsel-sched-pipelining -fsel-sched-pipelining-outer-loops -fpredictive-commoning -fprefetch-loop-arrays -ftree-loop-optimize /g" $tmpcycle
+        sed -i "s/vfpv /vfpv4 /g" $tmpcycle
+        sed -i "s/vfpv,/vfpv4,/g" $tmpcycle
+        sed -i "s/-O2/-O2 --param l1-cache-size=64 --param l2-cache-size=1024 -faggressive-loop-optimizations -fguess-branch-probability -floop-nest-optimize -fomit-frame-pointer -fsel-sched-pipelining -fsel-sched-pipelining-outer-loops -fpredictive-commoning -fprefetch-loop-arrays -ftree-loop-optimize /g" $tmpcycle
+    done
+
+    ## build
+    make -j$(($(grep -c processor /proc/cpuinfo)+1)) zImage modules dtbs
+
+    ## create deb-pkg
+    mkdir ${basedir}/kernel_pkg
+    mkdir ${basedir}/kernel_pkg/boot
+    mkdir ${basedir}/kernel_pkg/boot/dtbs
+    mkdir ${basedir}/kernel_pkg/boot/re-signing
+    mkdir ${basedir}/kernel_pkg/usr
+    mkdir ${basedir}/kernel_pkg/DEBIAN
+
+    make modules_install INSTALL_MOD_PATH=${basedir}/kernel_pkg
+    make headers_install INSTALL_HDR_PATH=${basedir}/kernel_pkg/usr
+    cp -f arch/arm/boot/dts/exynos5250-snow.dtb ${basedir}/kernel_pkg/boot/dtbs/exynos5250-snow.dtb
+    cp -f arch/arm/boot/dts/exynos5250-snow-rev5.dtb ${basedir}/kernel_pkg/boot/dtbs/exynos5250-snow-rev5.dtb
+    cp -f arch/arm/boot/zImage ${basedir}/kernel_pkg/boot/zImage 
+    cp -f arch/arm/boot/zImage ${basedir}/zImage 
+
+    kernver=$(ls ${basedir}/kernel_pkg/lib/modules/ | sed 's/-XE.*//g')
+    cd ${basedir}/kernel_pkg/lib/modules/$kernver
+    rm -f build
+    rm -f source
+    ln -s /usr/src/kernel build
+    ln -s /usr/src/kernel source
+    
+    cd ${basedir}/kernel_pkg/boot
+    curl -o re-signing/kernel.keyblock https://raw.githubusercontent.com/archlinuxarm/PKGBUILDs/master/core/linux-armv7/kernel.keyblock
+    curl -o re-signing/kernel_data_key.vbprivk https://raw.githubusercontent.com/archlinuxarm/PKGBUILDs/master/core/linux-armv7/kernel_data_key.vbprivk
+
+cat << __EOF__ > re-signing/kernel-exynos.its
+/dts-v1/;
+ 
+/ {
+    description = "Chrome OS kernel image with one or more FDT blobs";
+    images {
+        kernel@1{
+            description = "kernel";
+            data = /incbin/("../zImage");
+            type = "kernel_noload";
+            arch = "arm";
+            os = "linux";
+            compression = "none";
+            load = <0>;
+            entry = <0>;
+        };
+        fdt@1{
+            description = "exynos5250-snow.dtb";
+            data = /incbin/("../dtbs/exynos5250-snow.dtb");
+            type = "flat_dt";
+            arch = "arm";
+            compression = "none";
+            hash@1{
+                algo = "sha1";
+            };
+        };
+        fdt@2{
+            description = "exynos5250-snow-rev5.dtb";
+            data = /incbin/("../dtbs/exynos5250-snow-rev5.dtb");
+            type = "flat_dt";
+            arch = "arm";
+            compression = "none";
+            hash@1{
+                algo = "sha1";
+            };
+        };
+    };
+    configurations {
+        default = "conf@1";
+        conf@1{
+            kernel = "kernel@1";
+            fdt = "fdt@1";
+        };
+        conf@2{
+            kernel = "kernel@1";
+            fdt = "fdt@2";
+        };
+    };
+};
+
+__EOF__
+
+    echo 'console=tty0 root=PARTUUID=%U/PARTNROFF=1 zswap.compressor=zstd zswap.max_pool_percent=40 noinitrd rootwait' > re-signing/cmdline
+    dd if=/dev/zero of=re-signing/bootloader.bin bs=512 count=1
+
+    echo '#!/bin/bash
+echo ""
+echo re-signing kernel image
+if [ -f kernel.bin ]; then 
+    echo backing up existed image
+    mv -f kernel.bin kernel.bin.bak; 
+    echo you may restore it from kernel.bin.bak
+fi
+echo ""
+sleep 5
+
+mkimage -D "-I dts -O dtb -p 2048" -f re-signing/kernel-exynos.its /tmp/exynos-kernel
+
+vbutil_kernel --arch arm --pack kernel.bin --keyblock re-signing/kernel.keyblock --signprivate re-signing/kernel_data_key.vbprivk --version 1 --config re-signing/cmdline --bootloader re-signing/bootloader.bin --vmlinuz /tmp/exynos-kernel
+' > krn_re-signing
+    chmod +x krn_re-signing
+    ./krn_re-signing
+
+    cp -f kernel.bin ${basedir}/kernel.bin
+
+    echo 'Package: linux-kernel-xe303c12
+Version: '"$kernver"'
+Architecture: '"$architecture"'
+Maintainer: Kernel build script maintainer https://git[la,hu]b.com/quarkscript
+Description: Custom '"$architecture"' linux kernel, builded for XE303C12 Chromebook
+Depends: '"$depends"'
+Replaces: '"$replaces"'
+Provides: '"$provides"'
+Suggests: '"$suggests"'
+'> ${basedir}/kernel_pkg/DEBIAN/control
+
+    echo '#!/bin/bash
+krnprts=""
+krnprtc=0
+  for i in $(ls /dev | grep -x --regexp="mmcblk[0-9]" --regexp="sd[a-z]" --regexp="vd[a-z]"); do
+    if $(cgpt show /dev/$i | grep Label | grep -q [Kk]ernel); then
+      if $(echo $i | grep -q mmcblk); then
+        krnprts+="$i""p$(cgpt show /dev/$i | grep Label | grep [Kk]ernel -m 1 | sed '"'"'s/  / /g'"'"' | sed '"'"'s/  / /g'"'"' | sed '"'"'s/ La.*//g'"'"' | sed '"'"'s/.* //g'"'"') "
+      else
+        krnprts+="$i$(cgpt show /dev/$i | grep Label | grep [Kk]ernel -m 1 | sed '"'"'s/  / /g'"'"' | sed '"'"'s/  / /g'"'"' | sed '"'"'s/ La.*//g'"'"' | sed '"'"'s/.* //g'"'"') "
+      fi
+      krnprtc=$(($krnprtc+1))
+    fi
+  done
+  
+  echo ""
+  if [ "$krnprtc" -eq 0 ]; then
+    echo "Chrome OS kernel partition did not detected." 
+    echo "You must reflash kernel manually."
+  elif [ "$krnprtc" -eq 1 ]; then
+    echo "Finded ChromeOs kernel partition - $krnprts"
+    echo "Do you want to flash a new kernel to it? (y/n)"
+    read -r shouldwe
+    if [[ $shouldwe =~ ^([yY][eE][sS]|[yY])$ ]]; then
+      dd if=/boot/kernel.bin of=/dev/$krnprts
+      sync
+    else
+      echo "You may flash kernel manually like:"
+      echo "dd if=/boot/kernel.bin of=/dev/$krnprts"
+    fi
+  else
+    echo "Finded more than one Chrome OS kernel partition."
+    echo "You need to select next action
+    "
+    echo "0 for do not flash"
+    numpart=0
+    for i in $krnprts; do
+      numpart=$(($numpart+1))
+      echo "$numpart for flash $i partition"
+    done
+    echo ""
+    echo "Wrong partition may lead to bootfail. Be aware!"
+    read -r shouldwe
+    if [ $shouldwe -gt 0 ]&&[ $shouldwe -le $numpart ]; then
+      numpart=0
+      for i in $krnprts; do
+        numpart=$(($numpart+1))
+        if [ $numpart -eq $shouldwe ]; then
+          dd if=/boot/kernel.bin of=/dev/$i
+          sync
+        fi
+      done
+    fi
+  fi
+'> ${basedir}/kernel_pkg/DEBIAN/postinst
+    chmod 0755 ${basedir}/kernel_pkg/DEBIAN/postinst
+    cd ${basedir}/
+    dpkg-deb --build ${basedir}/kernel_pkg $(echo linux-kernel-xe303c12-$kernver).deb
+
+    #cd ${basedir}/kernel/
+    #make mrproper
+    #cp ${basedir}/../config_w .config
+    #rm -f ${basedir}/../config_w
+    #make modules_prepare
+fi    
+if $(echo $stages | grep -q bts); then
+        echo '
+# Build target system stage
+    '
+    
     cd ${basedir}
-    debootstrap --foreign --arch $architecture kali-rolling kali-$architecture http://$mirror/kali |& tee debootstrap.log
+    $debootstrap_string |& tee debootstrap.log
     if $(cat debootstrap.log | grep -q "Couldn't download package" -m 1); then
         echo ''
         echo 'Restart debootstrap'
         echo ''
-        debootstrap --foreign --arch $architecture kali-rolling kali-$architecture http://$mirror/kali |& tee debootstrap.log
+        $debootstrap_string |& tee debootstrap.log
     fi
     if $(cat debootstrap.log | grep -q "Couldn't download package" -m 1); then
         echo ''
         echo 'Restart debootstrap'
         echo ''
-        debootstrap --foreign --arch $architecture kali-rolling kali-$architecture http://$mirror/kali |& tee debootstrap.log
+        $debootstrap_string |& tee debootstrap.log
     fi
     if $(cat debootstrap.log | grep -q "Couldn't download package" -m 1); then
         echo "seems some problems with network or repos; try to run $0 later"
         exit 1
     fi
-    cp /usr/bin/qemu-arm-static kali-$architecture/usr/bin/
-    LANG=C chroot kali-$architecture /debootstrap/debootstrap --second-stage
+    cp /usr/bin/qemu-arm-static $target_hostname-$architecture/usr/bin/
+    LANG=C chroot $target_hostname-$architecture /debootstrap/debootstrap --second-stage
     # Create sources.list
-cat << EOF > kali-$architecture/etc/apt/sources.list
-deb http://$mirror/kali kali-rolling main contrib non-free
+cat << EOF > $target_hostname-$architecture/etc/apt/sources.list
+$sources_list
 EOF
-    echo "kali" > kali-$architecture/etc/hostname
-cat << EOF > kali-$architecture/etc/hosts
-127.0.0.1       kali    localhost
+    echo "kali" > $target_hostname-$architecture/etc/hostname
+cat << EOF > $target_hostname-$architecture/etc/hosts
+127.0.0.1       $target_hostname    localhost
 ::1             localhost ip6-localhost ip6-loopback
 fe00::0         ip6-localnet
 ff00::0         ip6-mcastprefix
 ff02::1         ip6-allnodes
 ff02::2         ip6-allrouters
 EOF
-cat << EOF > kali-$architecture/etc/network/interfaces
+cat << EOF > $target_hostname-$architecture/etc/network/interfaces
 auto lo
 iface lo inet loopback
 EOF
-cat << EOF > kali-$architecture/etc/resolv.conf
+cat << EOF > $target_hostname-$architecture/etc/resolv.conf
 nameserver 1.1.1.1
 EOF
     export MALLOC_CHECK_=0 # workaround for LP: #520465
     export LC_ALL=C
     export DEBIAN_FRONTEND=noninteractive
-    mount -t proc proc kali-$architecture/proc
-    mount -o bind /dev/ kali-$architecture/dev/
-    mount -o bind /dev/pts kali-$architecture/dev/pts
-cat << EOF > kali-$architecture/debconf.set
+    mount -t proc proc $target_hostname-$architecture/proc
+    mount -o bind /dev/ $target_hostname-$architecture/dev/
+    mount -o bind /dev/pts $target_hostname-$architecture/dev/pts
+cat << EOF > $target_hostname-$architecture/debconf.set
 console-common console-data/keymap/policy select Select keymap from full list
 console-common console-data/keymap/full select en-latin1-nodeadkeys
 EOF
@@ -152,7 +472,7 @@ EOF
 	i='$i'
 	
 	check_mkl='$(cat aptgetmainpkg.log | grep -q --regexp="Cannot initiate the connection" --regexp="Unable to connect" -m 1)'
-cat << EOF > kali-$architecture/third-stage
+cat << EOF > $target_hostname-$architecture/third-stage
 #!/bin/bash
 dpkg-divert --add --local --divert /usr/sbin/invoke-rc.d.chroot --rename /usr/sbin/invoke-rc.d
 cp /bin/true /usr/sbin/invoke-rc.d
@@ -166,25 +486,25 @@ debconf-set-selections /debconf.set
 rm -f /debconf.set
 apt-get update
 
-apt-get -y -d install git-core binutils ca-certificates initramfs-tools u-boot-tools |& tee aptgetmainpkg.log
+apt-get -y -d install $targetpackages_2 |& tee aptgetmainpkg.log
 if $check_mkl; then
-   apt-get -y -d install git-core binutils ca-certificates initramfs-tools u-boot-tools |& tee aptgetmainpkg.log
+   apt-get -y -d install $targetpackages_2 |& tee aptgetmainpkg.log
    sleep 5
 fi
 if $check_mkl; then
-   apt-get -y -d install git-core binutils ca-certificates initramfs-tools u-boot-tools |& tee aptgetmainpkg.log
+   apt-get -y -d install $targetpackages_2 |& tee aptgetmainpkg.log
 fi
-apt-get -y install git-core binutils ca-certificates initramfs-tools u-boot-tools
+apt-get -y install $targetpackages_2
 
-apt-get -y -d install locales console-common less nano git
+apt-get -y -d install $targetpackages_3
 if $check_mkl; then
-   apt-get -y -d install locales console-common less nano git |& tee aptgetmainpkg.log
+   apt-get -y -d install $targetpackages_3 |& tee aptgetmainpkg.log
    sleep 5
 fi
 if $check_mkl; then
-   apt-get -y -d install locales console-common less nano git |& tee aptgetmainpkg.log
+   apt-get -y -d install $targetpackages_3 |& tee aptgetmainpkg.log
 fi
-apt-get -y install locales console-common less nano git
+apt-get -y install $targetpackages_3
 
 echo "root:toor" | chpasswd
 sed -i -e 's/KERNEL\!=\"eth\*|/KERNEL\!=\"/' /lib/udev/rules.d/75-persistent-net-generator.rules
@@ -194,7 +514,7 @@ export DEBIAN_FRONTEND=noninteractive
 ## check and remove from install list unavailable packages
 paclist=""
 LANG=C apt list | sed 's/\/.*//g' >/tmp/aptlist
-for i in $packages; do
+for i in $targetpackages; do
 	if $tmpvar1; then 
 		paclist+="$i "
 	else 
@@ -273,9 +593,94 @@ fi
 sleep 5
 
 EOF
-    chmod +x kali-$architecture/third-stage
-    LANG=C chroot kali-$architecture /third-stage
-cat << EOF > kali-$architecture/cleanup
+    chmod +x $target_hostname-$architecture/third-stage
+    LANG=C chroot $target_hostname-$architecture /third-stage
+    umount ${basedir}/$target_hostname-$architecture/proc/sys/fs/binfmt_misc
+    umount ${basedir}/$target_hostname-$architecture/proc
+    umount ${basedir}/$target_hostname-$architecture/dev/pts
+    umount ${basedir}/$target_hostname-$architecture/dev
+fi 
+
+if $(echo $stages | grep -q bdi); then
+    echo '
+# Build disk image stage
+    '
+    cd ${basedir}/
+    if [ -d "${basedir}/root" ]; then
+        umount ${basedir}/root
+        rm -fr ${basedir}/root
+    fi
+    umount /dev/mapper/loop*
+    if [ -f "${basedir}/$target_hostname-$architecture-xe303c12.img" ]; then
+        rm -f ${basedir}/$target_hostname-$architecture-xe303c12.img
+    fi
+    
+    echo "Creating image file for Exynos-based Samsung XE303C12 Chromebook"
+    
+    dd if=/dev/zero of=${basedir}/$target_hostname-$architecture-xe303c12.img bs=1M count=$disksize
+    
+    parted $target_hostname-$architecture-xe303c12.img --script -- mklabel gpt
+    
+    cgpt create -z $target_hostname-$architecture-xe303c12.img
+    
+    cgpt create $target_hostname-$architecture-xe303c12.img
+    
+    cgpt add -i 1 -t kernel -b 8192 -s 32768 -l kernel -S 1 -T 5 -P 10 $target_hostname-$architecture-xe303c12.img
+    
+    cgpt add -i 2 -t data -b 40960 -s `expr $(cgpt show $target_hostname-$architecture-xe303c12.img | grep 'Sec GPT table' | awk '{ print \$1 }')  - 40960` -l Root $target_hostname-$architecture-xe303c12.img
+    
+    loopdevice=`losetup -f --show ${basedir}/$target_hostname-$architecture-xe303c12.img`
+    
+    device=`kpartx -va $loopdevice| sed -E 's/.*(loop[0-9])p.*/\1/g' | head -1`
+    
+    sleep 5
+    
+    device="/dev/mapper/${device}"
+    bootp=${device}p1
+    rootp=${device}p2
+
+    mkdir -p ${basedir}/root
+    if [ "$fstype" == "btrfs" ]; then
+        mkfs.btrfs -f --label rootfs $rootp
+        mount $rootp ${basedir}/root -o,compress,noatime,ssd
+    elif [ "$fstype" == "f2fs" ]; then
+        mkfs.f2fs -f -O 'extra_attr flexible_inline_xattr compression encrypt ' -l rootfs $rootp
+        mount $rootp ${basedir}/root -o,compress_algorithm=lzo,compress_extension=*
+    else
+        mkfs.ext4 -O ^flex_bg -O ^metadata_csum -L rootfs $rootp
+        mount $rootp ${basedir}/root
+    fi
+
+    rootuuid=$(LANG=C blkid | grep "$rootp" | grep 'LABEL="rootfs"' | sed 's/.* UUID="//g' | sed 's/".*//g')
+    
+    echo "Rsyncing rootfs into image file"
+    rsync -HPavz -q ${basedir}/$target_hostname-$architecture/ ${basedir}/root/
+    
+    echo '
+Install kernel and clear disk image from debootstrap
+    '
+    export MALLOC_CHECK_=0 # workaround for LP: #520465
+    export LC_ALL=C
+    export DEBIAN_FRONTEND=noninteractive
+    mount -t proc proc ${basedir}/root/proc
+    mount -o bind /dev/ ${basedir}/root/dev
+    mount -o bind /dev/pts ${basedir}/root/dev/pts
+    
+    krn_pkg_name=$(ls ${basedir}/ | grep .deb)
+    if [ ! -z "$krn_pkg_name" ]; then
+        cp ${basedir}/$krn_pkg_name ${basedir}/root/$krn_pkg_name
+cat << EOF >${basedir}/root/install-kernel
+apt-get install /$krn_pkg_name --force-yes --yes
+EOF
+        chmod +x ${basedir}/root/install-kernel
+        LANG=C chroot ${basedir}/root /install-kernel
+    else
+	echo '
+No kernel package was found. Linux disk image will be unfunctional.
+'
+    fi
+    
+cat << EOF > ${basedir}/root/cleanup
 #!/bin/bash
 rm -rf /root/.bash_history
 apt-get update
@@ -284,56 +689,20 @@ rm -f /0
 rm -f /hs_err*
 rm -f cleanup
 rm -f /usr/bin/qemu*
+rm -f install-kernel
 EOF
-    chmod +x kali-$architecture/cleanup
-    LANG=C chroot kali-$architecture /cleanup
-    umount kali-$architecture/proc/sys/fs/binfmt_misc
-    umount kali-$architecture/dev/pts
-    umount kali-$architecture/dev/
-    umount kali-$architecture/proc
-else
-    umount /dev/mapper/loop0p2
-    umount ${basedir}/root
-    rm -rf ${basedir}/root
-    rm -f ${basedir}/kali-$1-exynos.img
-    rm -f ${basedir}/kernel.bin
-    cd ${basedir}
-fi
-## final stages
-echo "Creating image file for Exynos-based Samsung XE303C12 Chromebook"
-dd if=/dev/zero of=${basedir}/kali-exynos.img bs=1M count=$dis
-parted kali-exynos.img --script -- mklabel gpt
-cgpt create -z kali-exynos.img
-cgpt create kali-exynos.img
-cgpt add -i 1 -t kernel -b 8192 -s 32768 -l kernel -S 1 -T 5 -P 10 kali-exynos.img
-cgpt add -i 2 -t data -b 40960 -s `expr $(cgpt show kali-exynos.img | grep 'Sec GPT table' | awk '{ print \$1 }')  - 40960` -l Root kali-exynos.img
-loopdevice=`losetup -f --show ${basedir}/kali-exynos.img`
-device=`kpartx -va $loopdevice| sed -E 's/.*(loop[0-9])p.*/\1/g' | head -1`
-sleep 5
-device="/dev/mapper/${device}"
-bootp=${device}p1
-rootp=${device}p2
-
-mkdir -p ${basedir}/root
-if [ "$4" == "btrfs" ]; then
-    mkfs.btrfs -f --label rootfs $rootp
-    mount $rootp ${basedir}/root -o,compress
-elif [ "$4" == "f2fs" ]; then
-    mkfs.f2fs -f -O 'extra_attr flexible_inline_xattr compression encrypt ' -l rootfs $rootp
-    mount $rootp ${basedir}/root -o,compress_algorithm=lzo,compress_extension=*
-else
-    mkfs.ext4 -O ^flex_bg -O ^metadata_csum -L rootfs $rootp
-    mount $rootp ${basedir}/root
-fi
-
-rootuuid=$(LANG=C blkid | grep "$rootp" | grep 'LABEL="rootfs"' | sed 's/.* UUID="//g' | sed 's/".*//g')
-echo "Rsyncing rootfs into image file"
-rsync -HPavz -q ${basedir}/kali-$architecture/ ${basedir}/root/
+    chmod +x ${basedir}/root/cleanup
+    LANG=C chroot ${basedir}/root /cleanup
+    umount ${basedir}/root/proc/sys/fs/binfmt_misc
+    umount ${basedir}/root/proc
+    umount ${basedir}/root/dev/pts
+    umount ${basedir}/root/dev
+    
+    
 cat << EOF > ${basedir}/root/etc/apt/sources.list
-deb http://http.kali.org/kali kali-rolling main contrib non-free
-deb-src http://http.kali.org/kali kali-rolling main contrib non-free
+$sourcelist
 EOF
-if [ "$4" == "btrfs" ]; then
+    if [ "$fstype" == "btrfs" ]; then
 cat << EOF> ${basedir}/root/etc/fstab
 # /etc/fstab: static file system information.
 #
@@ -343,12 +712,12 @@ cat << EOF> ${basedir}/root/etc/fstab
 #
 # <file system> <mount point>   <type>  <options>       <dump>  <pass>
 # / was on /dev/sda2 during installation
-UUID=$rootuuid /               btrfs    rw,noatime,compress=zstd,autodefrag,ssd 0       0
+UUID=$rootuuid /               btrfs    rw,noatime,compress=zstd:5,autodefrag,ssd 0       0
 # swap was on /dev/sdaX during installation
 #UUID= none            swap    sw              0       0
 #/dev/sr0        /media/cdrom0   udf,iso9660 user,noauto     0       0
 EOF
-elif [ "$4" == "f2fs" ]; then
+    elif [ "$fstype" == "f2fs" ]; then
 cat << EOF> ${basedir}/root/etc/fstab
 # /etc/fstab: static file system information.
 #
@@ -363,7 +732,7 @@ UUID=$rootuuid /               f2fs    rw,noatime,compress_algorithm=zstd,compre
 #UUID= none            swap    sw              0       0
 #/dev/sr0        /media/cdrom0   udf,iso9660 user,noauto     0       0
 EOF
-else
+    else
 cat << EOF> ${basedir}/root/etc/fstab
 # /etc/fstab: static file system information.
 #
@@ -378,153 +747,18 @@ UUID=$rootuuid /               ext4    rw,noatime 0       1
 #UUID= none            swap    sw              0       0
 #/dev/sr0        /media/cdrom0   udf,iso9660 user,noauto     0       0
 EOF
-fi
-
-export CROSS_COMPILE=arm-linux-gnueabihf-
-export ARCH=arm
-if $(echo $1 | grep rc -q); then
-	git clone https://github.com/torvalds/linux ${basedir}/linux
-	rm -rf ${basedir}/linux/.git
-	mv -f ${basedir}/linux ${basedir}/root/usr/src/kernel
-	#rm -rf ${basedir}/linux
-	cd ${basedir}/root/usr/src/kernel
-	cp ${basedir}/../config .config
-elif $(echo $1 | grep l -q); then
-    tar -xf ${basedir}/../linux*tar.xz -C ${basedir}/root/usr/src/
-	mv -f ${basedir}/root/usr/src/linux* ${basedir}/root/usr/src/kernel
-	#rm -rf ${basedir}/root/usr/src/linux*
-	cd ${basedir}/root/usr/src/kernel
-	cp ${basedir}/../config .config
-	curl -o ${basedir}/root/usr/src/kernel/9_kali_inject.patch https://gitlab.com/kalilinux/build-scripts/kali-arm/-/raw/master/patches/kali-wifi-injection-5.9.patch
-else
-	tar -xf /usr/src/linux*tar.xz -C ${basedir}/root/usr/src/
-	mv -f ${basedir}/root/usr/src/linux* ${basedir}/root/usr/src/kernel
-	#rm -rf ${basedir}/root/usr/src/linux*
-	cd ${basedir}/root/usr/src/kernel
-	if [ -f /usr/src/patch*xz ]; then
-        xz -d /usr/src/linux*patch*xz
-        mv -f *.patch 0_kernel.patch
-	fi
-	cp ${basedir}/../config .config
-fi
-
-# apply patches
-if [ ! -z "$3" ]&&[ -f "${basedir}/../$3" ]; then
-    cp "${basedir}/../$3" 8_rcnee.patch
-fi
-for ptch in *patch; do
-    git apply $ptch
-done
-
-if $(echo $1 | grep rc -q); then
-    make menuconfig
-fi
-
-echo '
-forcing custom optimization flags
-'
-for tmpcycle in $(find -name Makefile); do
-    sed -i "s/armv7-a/armv7-a+mp+neon-vfpv4  --param l1-cache-size=64 --param l2-cache-size=1024 -faggressive-loop-optimizations -fguess-branch-probability -floop-nest-optimize -fomit-frame-pointer -fsel-sched-pipelining -fsel-sched-pipelining-outer-loops -fpredictive-commoning -fprefetch-loop-arrays -ftree-loop-optimize /g" $tmpcycle
-    sed -i "s/vfpv /vfpv4 /g" $tmpcycle
-    sed -i "s/vfpv,/vfpv4,/g" $tmpcycle
-    sed -i "s/-O2/-O2 --param l1-cache-size=64 --param l2-cache-size=1024 -faggressive-loop-optimizations -fguess-branch-probability -floop-nest-optimize -fomit-frame-pointer -fsel-sched-pipelining -fsel-sched-pipelining-outer-loops -fpredictive-commoning -fprefetch-loop-arrays -ftree-loop-optimize /g" $tmpcycle
-done
-
-make -j$(($(grep -c processor /proc/cpuinfo)+1)) zImage modules dtbs
-make modules_install INSTALL_MOD_PATH=${basedir}/root
-make headers_install INSTALL_HDR_PATH=${basedir}/root/usr
-
-mkdir ${basedir}/root/boot/dtbs/
-cp -f arch/arm/boot/dts/exynos5250-snow.dtb ${basedir}/root/boot/dtbs/exynos5250-snow.dtb
-cp -f arch/arm/boot/dts/exynos5250-snow-rev5.dtb ${basedir}/root/boot/dtbs/exynos5250-snow-rev5.dtb
-cp -f arch/arm/boot/zImage ${basedir}/root/boot/zImage 
-cp -f arch/arm/boot/zImage ${basedir}/zImage 
-cp .config ${basedir}/../config_w
-cd ${basedir}/root/usr/src/kernel/arch/arm/boot
-cat << __EOF__ > ${basedir}/root/usr/src/kernel/arch/arm/boot/kernel-exynos.its
-/dts-v1/;
- 
-/ {
-    description = "Chrome OS kernel image with one or more FDT blobs";
-    images {
-        kernel@1{
-            description = "kernel";
-            data = /incbin/("zImage");
-            type = "kernel_noload";
-            arch = "arm";
-            os = "linux";
-            compression = "none";
-            load = <0>;
-            entry = <0>;
-        };
-        fdt@1{
-            description = "exynos5250-snow.dtb";
-            data = /incbin/("dts/exynos5250-snow.dtb");
-            type = "flat_dt";
-            arch = "arm";
-            compression = "none";
-            hash@1{
-                algo = "sha1";
-            };
-        };
-        fdt@2{
-            description = "exynos5250-snow-rev5.dtb";
-            data = /incbin/("dts/exynos5250-snow-rev5.dtb");
-            type = "flat_dt";
-            arch = "arm";
-            compression = "none";
-            hash@1{
-                algo = "sha1";
-            };
-        };
-    };
-    configurations {
-        default = "conf@1";
-        conf@1{
-            kernel = "kernel@1";
-            fdt = "fdt@1";
-        };
-        conf@2{
-            kernel = "kernel@1";
-            fdt = "fdt@2";
-        };
-    };
-};
-
-__EOF__
-
-echo 'console=tty0 root=PARTUUID=%U/PARTNROFF=1 zswap.compressor=zstd zswap.max_pool_percent=40' > cmdline
-
-mkimage -D "-I dts -O dtb -p 2048" -f kernel-exynos.its exynos-kernel
-# Pulled from ChromeOS, this is exactly what they do because there's no
-# bootloader in the kernel partition on ARM.
-dd if=/dev/zero of=bootloader.bin bs=512 count=1
-vbutil_kernel --arch arm --pack ${basedir}/kernel.bin --keyblock /usr/share/vboot/devkeys/kernel.keyblock --signprivate /usr/share/vboot/devkeys/kernel_data_key.vbprivk --version 1 --config cmdline --bootloader bootloader.bin --vmlinuz exynos-kernel
-cp -f ${basedir}/kernel.bin ${basedir}/root/boot/vmlinux.kpart
-cd ${basedir}/root/usr/src/kernel/
-make mrproper
-cp ${basedir}/../config_w .config
-rm -f ${basedir}/../config_w
-make modules_prepare
-cd ${basedir}
-# Fix up the symlink for building external modules
-# kernver is used so we don't need to keep track of what the current compiled
-# version is
-kernver=$(ls ${basedir}/root/lib/modules/)
-cd ${basedir}/root/lib/modules/$kernver
-rm build
-rm source
-ln -s /usr/src/kernel build
-ln -s /usr/src/kernel source
-cd ${basedir}
-# Bit of a hack to hide eMMC partitions from XFCE
+    fi
+    
+    cd ${basedir}
+    # Bit of a hack to hide eMMC partitions from XFCE
 #cat << EOF > ${basedir}/root/etc/udev/rules.d/99-hide-emmc-partitions.rules
 #KERNEL=="mmcblk0*", ENV{UDISKS_IGNORE}="1"
 #EOF
-# Disable uap0 and p2p0 interfaces in NetworkManager
-#printf '\n[keyfile]\nunmanaged-devices=interface-name:p2p0\n' >> ${basedir}/root/etc/NetworkManager/NetworkManager.conf
-# Touchpad configuration
-mkdir -p ${basedir}/root/etc/X11/xorg.conf.d
+    # Disable uap0 and p2p0 interfaces in NetworkManager
+    #printf '\n[keyfile]\nunmanaged-devices=interface-name:p2p0\n' >> ${basedir}/root/etc/NetworkManager/NetworkManager.conf
+    
+    # Touchpad configuration
+    mkdir -p ${basedir}/root/etc/X11/xorg.conf.d
 cat << EOF > ${basedir}/root/etc/X11/xorg.conf.d/10-synaptics-chromebook.conf
 Section "InputClass"
 	Identifier		"touchpad"
@@ -553,22 +787,30 @@ ATTR{name}=="exynos-gsc.2*", SYMLINK+="image-proc2"
 ATTR{name}=="exynos-gsc.3*", SYMLINK+="image-proc3"
 EOF
 
-cd ${basedir}
-sed -i -e 's/^#PermitRootLogin.*/PermitRootLogin yes/' ${basedir}/root/etc/ssh/sshd_config
-# Unmount partitions
-umount $rootp
-dd if=${basedir}/kernel.bin of=$bootp
-kpartx -dv $loopdevice
-losetup -d $loopdevice
-echo '
-if all complete without errors you can write result image with dd, for example:
-dd if=kali-exynos/kali-exynos.img \
-of=/dev/"flash stick" bs=8M status=progress
+    if [ -f "${basedir}/root/etc/ssh/sshd_config" ]; then
+        sed -i -e 's/^#PermitRootLogin.*/PermitRootLogin yes/' ${basedir}/root/etc/ssh/sshd_config
+    fi
 
-Be aware! Wrong /dev/"flash stick" can permanently destroy data on hard drives!
+    # Unmount partitions
+    umount $rootp
+    if [ -f "${basedir}/kernel.bin" ]; then
+        dd if=${basedir}/kernel.bin of=$bootp
+    else
+	echo '
+Kernel flash image not found. Linux disk image may be unbootable
 '
-# Clean up all the temporary build stuff and remove the directories will be not done
-# It allow rebuild kernel and/or image without redownload arm packages
-# if you need remove it, do it manually
-#echo "Removing temporary build files"
-#rm -rf ${basedir}/kernel ${basedir}/kernel.bin ${basedir}/root ${basedir}/kali-$architecture ${basedir}/patches ${basedir}/bootloader.bin
+    fi
+    kpartx -dv $loopdevice
+    losetup -d $loopdevice
+
+    echo "
+Script execution ends, if all complete without errors you can write result image with dd, 
+for example:
+dd if=${basedir}/$target_hostname-$architecture-xe303c12.img \
+of=/dev/'flash stick' bs=8M status=progress
+
+Be aware! Wrong /dev/'flash stick' can permanently destroy data on hard drives!
+"
+
+fi
+    
