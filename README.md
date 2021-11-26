@@ -48,6 +48,6 @@ sudo ./gadebli patch-5.15-rc7-armv7-x7.diff btrfs |& tee -a build.log
 #sudo ./gadebli patch-5.15-rc7-armv7-x7.diff ck |& tee -a build.log
 
 ## rebuild disk image; write build log
-#sudo ./gadebli patch-5.15-rc7-armv7-x7.diff btrfs bdi |& tee -a build.log
+#sudo ./gadebli btrfs bdi |& tee -a build.log
 
 ```
