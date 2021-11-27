@@ -8,7 +8,7 @@ if [ "$1" == "-h" ]||[ "$1" == "--help" ]||[ "$1" == "help" ] ; then echo '
 # ck - compile kernel stage                                            #
 # bts - build target system stage                                      #
 # bdi - build disk image stage, depends of all previous stages         #
-# [kali] - supported distributions                                     #
+# [kali,devuan] - supported distributions                              #
 # size - disk image size, 2-128 (G) or 1882-131092 (M); 7G by default  #
 # patch - united kernel patch                                          #
 # btrfs,f2fs - root part filesystem type, otherwise ext4 will be used  #
@@ -43,6 +43,7 @@ replaces="linux-image-armmp,linux-image-armmp-lpae,linux-headers-armmp,linux-hea
 provides="linux-image-generic,linux-headers-generic"
 sourcelist='deb http://http.kali.org/kali kali-rolling main contrib non-free
 deb-src http://http.kali.org/kali kali-rolling main contrib non-free'
+firmware_dir="/usr/lib/firmware"
 
 ## checks
 if [ $(whoami) != root ];then echo ''; echo root rights are required, try to run with sudo; echo ''; exit 1; fi
@@ -55,6 +56,20 @@ for ((tmpvar=1;tmpvar<=$#;tmpvar++)); do
         stages="$stages $tmpvalue"
     elif [ $tmpvalue == kali ];then
         echo '"'Kali defauilts'"' will be used
+    elif [ $tmpvalue == devuan ];then
+        mirror=deb.devuan.org
+        sourcelist='deb http://deb.devuan.org/merged chimaera          main non-free contrib
+deb http://deb.devuan.org/merged chimaera-updates  main non-free contrib
+deb http://deb.devuan.org/merged chimaera-security main non-free contrib'
+        target_hostname=devuan
+        sources_list="$sourcelist"
+        debootstrap_string="debootstrap --foreign --arch $architecture chimaera $target_hostname-$architecture http://deb.devuan.org/merged"
+        #http://deb.devuan.org/devuan/dists/
+        targetpackages+=" devuan-keyring"
+        targetpackages+=" sysv-rc sysvinit sysvinit-core sysvinit-utils"
+        #targetpackages+=" runit rinit-helper runit-init"
+        #targetpackages+=" s6"
+        firmware_dir="/lib/firmware"
     elif [ $tmpvalue == btrfs ]||[ $tmpvalue == f2fs ];then
         fstype=$tmpvalue
     elif $(echo $tmpvalue | grep -q [0-9])&&$(echo $tmpvalue | grep -vq [a-zA-Z,.]);then
@@ -104,6 +119,7 @@ no patch? are you sure?
 # replaces              $replaces
 # provides              $provides
 # sourcelist            $sourcelist
+# firmware_dir          $firmware_dir
 
 you may press Ctrl+C to abort
 "
@@ -129,6 +145,7 @@ else
 # replaces              $replaces
 # provides              $provides
 # sourcelist            $sourcelist
+# firmware_dir          $firmware_dir
 
 you may press Ctrl+C to abort
 "    
@@ -168,7 +185,7 @@ if $(echo $stages | grep -q ck); then
     '
     if [ ! -e "config" ];then
         echo Downloading kernel config from github.com/quarkscript/..
-        wget wget https://raw.githubusercontent.com/quarkscript/linux-armv7-xe303c12-only/master/archlinuxarm/linux_xe303c12/config
+        wget https://raw.githubusercontent.com/quarkscript/xe303c12_play_linux/master/config
     fi
     if [ ! -e "config" ];then
         echo Downloading kernel config from gitlab.com/quarkscript/..
@@ -441,7 +458,7 @@ if $(echo $stages | grep -q bts); then
 cat << EOF > $target_hostname-$architecture/etc/apt/sources.list
 $sources_list
 EOF
-    echo "kali" > $target_hostname-$architecture/etc/hostname
+    echo "$target_hostname" > $target_hostname-$architecture/etc/hostname
 cat << EOF > $target_hostname-$architecture/etc/hosts
 127.0.0.1       $target_hostname    localhost
 ::1             localhost ip6-localhost ip6-loopback
@@ -558,37 +575,37 @@ rm -f /third-stage
 
 
 # download firmwares
-if [ ! -d /usr/lib/firmware ]; then
-    mkdir -p /usr/lib/firmware
+if [ ! -d $firmware_dir ]; then
+    mkdir -p $firmware_dir
 fi
 # samsung
-if [ ! -f /usr/lib/firmware/s5p-mfc.fw ]; then
-    curl -o /usr/lib/firmware/s5p-mfc.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc.fw
+if [ ! -f $firmware_dir/s5p-mfc.fw ]; then
+    curl -o $firmware_dir/s5p-mfc.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc.fw
 fi
-if [ ! -f /usr/lib/firmware/s5p-mfc-v6-v2.fw ]; then
-    curl -o /usr/lib/firmware/s5p-mfc-v6-v2.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v6-v2.fw
+if [ ! -f $firmware_dir/s5p-mfc-v6-v2.fw ]; then
+    curl -o $firmware_dir/s5p-mfc-v6-v2.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v6-v2.fw
 fi
-if [ ! -f /usr/lib/firmware/s5p-mfc-v6.fw ]; then
-    curl -o /usr/lib/firmware/s5p-mfc-v6.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v6.fw
+if [ ! -f $firmware_dir/s5p-mfc-v6.fw ]; then
+    curl -o $firmware_dir/s5p-mfc-v6.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v6.fw
 fi
-if [ ! -f /usr/lib/firmware/s5p-mfc-v7.fw ]; then
-    curl -o /usr/lib/firmware/s5p-mfc-v7.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v7.fw
+if [ ! -f $firmware_dir/s5p-mfc-v7.fw ]; then
+    curl -o $firmware_dir/s5p-mfc-v7.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v7.fw
 fi
-if [ ! -f /usr/lib/firmware/s5p-mfc-v8.fw ]; then
-    curl -o /usr/lib/firmware/s5p-mfc-v8.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v8.fw
+if [ ! -f $firmware_dir/s5p-mfc-v8.fw ]; then
+    curl -o $firmware_dir/s5p-mfc-v8.fw https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/s5p-mfc-v8.fw
 fi
-if [ ! -d /usr/lib/firmware/mrvl ]; then
-    mkdir -p /usr/lib/firmware/mrvl
+if [ ! -d $firmware_dir/mrvl ]; then
+    mkdir -p $firmware_dir/mrvl
 fi
 # marvel
-if [ ! -f /usr/lib/firmware/mrvl/sd8787_uapsta.bin ]; then
-    curl -o /usr/lib/firmware/mrvl/sd8787_uapsta.bin https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/mrvl/sd8787_uapsta.bin
+if [ ! -f $firmware_dir/mrvl/sd8787_uapsta.bin ]; then
+    curl -o $firmware_dir/mrvl/sd8787_uapsta.bin https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/mrvl/sd8787_uapsta.bin
 fi
-if [ ! -f /usr/lib/firmware/mrvl/sd8797_uapsta.bin ]; then
-    curl -o /usr/lib/firmware/mrvl/sd8797_uapsta.bin https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/mrvl/sd8797_uapsta.bin
+if [ ! -f $firmware_dir/mrvl/sd8797_uapsta.bin ]; then
+    curl -o $firmware_dir/mrvl/sd8797_uapsta.bin https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/mrvl/sd8797_uapsta.bin
 fi
-if [ ! -f /usr/lib/firmware/mrvl/sd8897_uapsta.bin ]; then
-    curl -o /usr/lib/firmware/mrvl/sd8897_uapsta.bin https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/mrvl/sd8897_uapsta.bin
+if [ ! -f $firmware_dir/mrvl/sd8897_uapsta.bin ]; then
+    curl -o $firmware_dir/mrvl/sd8897_uapsta.bin https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/mrvl/sd8897_uapsta.bin
 fi
 sleep 5
 
