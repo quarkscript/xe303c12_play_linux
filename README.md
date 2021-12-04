@@ -14,14 +14,14 @@ Since script was rewrited [this demo](https://youtu.be/GCAjI37bUYo) may not comp
 
 Some kernel packages placed at [releases](https://github.com/quarkscript/xe303c12_play_linux/releases).
 
-My suggestion how to use  the script from installed x86_64 (x86) Kali Linux with Linux Kernel source 5.15.5 or from installed Devuan linux x86_64 for xe303c12-devuan-armhf-linux 
+My suggestion how to use  the script from installed x86_64 (x86) Kali Linux with Linux Kernel source 5.15.6 or from installed Devuan linux x86_64 for xe303c12-devuan-armhf-linux 
 ```#!/bin/bash
 
 # enable network
 sudo dhclient eth0
 
 # download kernel source
-wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.15.5.tar.xz --no-check-certificate
+wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.15.6.tar.xz --no-check-certificate
 
 # download rcn-ee patch
 wget https://rcn-ee.com/deb/sid-armhf/v5.15.0-rc7-armv7-x7/patch-5.15-rc7-armv7-x7.diff.gz
@@ -52,6 +52,9 @@ sudo ./gadebli patch-5.15-rc7-armv7-x7.diff btrfs |& tee -a build.log
 
 ## rebuild kernel; write build log
 #sudo ./gadebli patch-5.15-rc7-armv7-x7.diff ck |& tee -a build.log
+
+## or rebuild kernel for devuan; write build log
+#sudo ./gadebli patch-5.15-rc7-armv7-x7.diff ck devuan |& tee -a build.log
 
 ## rebuild disk image; write build log
 #sudo ./gadebli btrfs bdi |& tee -a build.log
