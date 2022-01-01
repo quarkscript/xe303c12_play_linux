@@ -14,14 +14,14 @@ Since script was rewrited [this demo](https://youtu.be/GCAjI37bUYo) may not comp
 
 Some kernel packages placed at [releases](https://github.com/quarkscript/xe303c12_play_linux/releases).
 
-My suggestion how to use  the script from installed x86_64 (x86) Kali Linux with Linux Kernel source 5.15.6 or from installed Devuan linux x86_64 for xe303c12-devuan-armhf-linux 
+My suggestion how to use  the script from installed x86_64 (x86) Kali Linux with Linux Kernel source 5.15.12 or from installed Devuan linux x86_64 for xe303c12-devuan-armhf-linux 
 ```#!/bin/bash
 
 # enable network
 sudo dhclient eth0
 
 # download kernel source
-wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.15.6.tar.xz --no-check-certificate
+wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.15.12.tar.xz --no-check-certificate
 
 # download rcn-ee patch
 wget https://rcn-ee.com/deb/sid-armhf/v5.15.0-rc7-armv7-x7/patch-5.15-rc7-armv7-x7.diff.gz
