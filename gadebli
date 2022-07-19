@@ -235,7 +235,7 @@ if $(echo $stages | grep -q ck); then
         git apply $patch
     fi
 
-    #make menuconfig
+#    make ARCH=$ARCH menuconfig
 
     echo '
 forcing some optimization flags
@@ -553,6 +553,8 @@ Depends: '"$depends"'
 Replaces: '"$replaces"'
 Provides: '"$provides"'
 Suggests: '"$suggests"'
+Section: kernel
+Priority: optional
 '> ${basedir}/kernel_pkg/DEBIAN/control
 
     echo '#!/bin/bash
