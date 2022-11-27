@@ -241,10 +241,25 @@ if $(echo $stages | grep -q ck); then
 forcing some optimization flags
 '
     for tmpcycle in $(find -name Makefile); do
-        sed -i "s/armv7-a/armv7-a+mp+neon-vfpv4  --param l1-cache-size=64 --param l2-cache-size=1024 -faggressive-loop-optimizations -fguess-branch-probability -floop-nest-optimize -fomit-frame-pointer -fsel-sched-pipelining -fsel-sched-pipelining-outer-loops -fpredictive-commoning -fprefetch-loop-arrays -ftree-loop-optimize /g" $tmpcycle
+#         sed -i "s/armv7-a/armv7-a+mp+neon-vfpv4  --param l1-cache-size=64 --param l2-cache-size=1024 -faggressive-loop-optimizations -fguess-branch-probability -floop-nest-optimize -fomit-frame-pointer -fsel-sched-pipelining -fsel-sched-pipelining-outer-loops -fpredictive-commoning -fprefetch-loop-arrays -ftree-loop-optimize /g" $tmpcycle
+#         sed -i "s/vfpv /vfpv4 /g" $tmpcycle
+#         sed -i "s/vfpv,/vfpv4,/g" $tmpcycle
+#         sed -i "s/-O2/-O2 --param l1-cache-size=64 --param l2-cache-size=1024 -faggressive-loop-optimizations -fguess-branch-probability -floop-nest-optimize -fomit-frame-pointer -fsel-sched-pipelining -fsel-sched-pipelining-outer-loops -fpredictive-commoning -fprefetch-loop-arrays -ftree-loop-optimize /g" $tmpcycle
+        
+#         sed -i "s/armv7-a/armv7-a+mp+neon-vfpv4  --param l1-cache-size=64 --param l2-cache-size=1024 -ftracer /g" $tmpcycle
+#         sed -i "s/vfpv /vfpv4 /g" $tmpcycle
+#         sed -i "s/vfpv,/vfpv4,/g" $tmpcycle
+#         sed -i "s/-O2/-O2 --param l1-cache-size=64 --param l2-cache-size=1024 -ftracer /g" $tmpcycle
+
+        sed -i "s/armv7-a/armv7-a+mp+neon-vfpv4  --param l1-cache-size=64 --param l2-cache-size=1024 -O2 -ftracer /g" $tmpcycle
         sed -i "s/vfpv /vfpv4 /g" $tmpcycle
         sed -i "s/vfpv,/vfpv4,/g" $tmpcycle
-        sed -i "s/-O2/-O2 --param l1-cache-size=64 --param l2-cache-size=1024 -faggressive-loop-optimizations -fguess-branch-probability -floop-nest-optimize -fomit-frame-pointer -fsel-sched-pipelining -fsel-sched-pipelining-outer-loops -fpredictive-commoning -fprefetch-loop-arrays -ftree-loop-optimize /g" $tmpcycle
+        sed -i "s/-O2/-O2 --param l1-cache-size=64 --param l2-cache-size=1024 -ftracer -funroll-loops -fprefetch-loop-arrays -fpredictive-commoning -fsel-sched-reschedule-pipelined /g" $tmpcycle
+
+#         sed -i "s/armv7-a/armv7-a+mp+neon-vfpv4  --param l1-cache-size=64 --param l2-cache-size=1024 -O2 -ftracer /g" $tmpcycle
+#         sed -i "s/vfpv /vfpv4 /g" $tmpcycle
+#         sed -i "s/vfpv,/vfpv4,/g" $tmpcycle
+#         sed -i "s/-O2/-O2 --param l1-cache-size=64 --param l2-cache-size=1024 -ftracer /g" $tmpcycle
     done
 
     ## build
